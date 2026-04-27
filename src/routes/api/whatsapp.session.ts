@@ -25,11 +25,11 @@ const AUTO_CONNECT_AFTER_MS = 8_000; // simula escaneo + conexión a los 8s
 function tick(s: SessionState) {
   const age = Date.now() - s.createdAt;
   if (s.status === "pending" || s.status === "scanning") {
-    if (age >= AUTO_CONNECT_AFTER_MS && s.status !== "connected") {
+    if (age >= AUTO_CONNECT_AFTER_MS) {
       s.status = "connected";
       s.connectedAt = Date.now();
       s.phone = "+52 55 9988 7766";
-    } else if (age >= QR_TTL_MS && s.status !== "connected") {
+    } else if (age >= QR_TTL_MS) {
       s.status = "expired";
     }
   }
