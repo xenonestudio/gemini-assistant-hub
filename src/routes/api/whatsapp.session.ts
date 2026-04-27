@@ -1,5 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import QRCode from "qrcode";
+// Side-effect import: registers the `server` field augmentation on createFileRoute.
+import "@tanstack/start-client-core/serverRoute";
 
 /**
  * Demo en memoria del estado de sesiones de WhatsApp.
@@ -76,7 +78,7 @@ export const Route = createFileRoute("/api/whatsapp/session")({
       },
 
       // Consulta el estado de una sesión existente
-      GET: async ({ request }) => {
+      GET: async ({ request }: { request: Request }) => {
         const url = new URL(request.url);
         const id = url.searchParams.get("id");
         if (!id) {
