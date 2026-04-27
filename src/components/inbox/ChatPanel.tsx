@@ -187,7 +187,7 @@ export function ChatPanel() {
         </div>
       )}
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-6">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-4 md:px-6 md:py-6">
         <div className="mx-auto flex max-w-3xl flex-col gap-3">
           {thread.map((m) => {
             const me = m.sender === "agent";
@@ -222,7 +222,10 @@ export function ChatPanel() {
         </div>
       </div>
 
-      <div className="border-t bg-card px-5 py-3">
+      <div
+        className="border-t bg-card px-3 py-3 md:px-5"
+        style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 0.75rem)" }}
+      >
         <div className="mx-auto flex max-w-3xl items-end gap-2 rounded-xl border bg-background p-2 focus-within:ring-2 focus-within:ring-ring/40">
           <button className="grid h-9 w-9 place-items-center rounded-lg text-muted-foreground hover:bg-muted">
             <Paperclip className="h-4 w-4" />
