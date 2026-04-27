@@ -17,11 +17,14 @@ import {
   GripVertical,
   Send,
   Tag,
+  Settings2,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import { useInbox } from "@/lib/inbox-store";
-import { DEAL_STAGES, type Attachment, type Deal, type DealStage } from "@/lib/inbox-types";
+import { type Attachment, type Deal, type DealStage, type PipelineStage } from "@/lib/inbox-types";
 import { ContactAvatar } from "./Avatar";
 import { cn } from "@/lib/utils";
 
@@ -64,9 +67,10 @@ function attachmentTint(kind: Attachment["kind"]) {
 }
 
 export function SalesPage() {
-  const { deals, contacts, selectedDealId, selectDeal, moveDeal, createDeal } = useInbox();
+  const { deals, contacts, selectedDealId, selectDeal, moveDeal, createDeal, pipelineStages } = useInbox();
   const [query, setQuery] = useState("");
   const [showNew, setShowNew] = useState(false);
+  const [showCustomize, setShowCustomize] = useState(false);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -83,14 +87,16 @@ export function SalesPage() {
 
   const grouped = useMemo(() => {
     const map = new Map<DealStage, Deal[]>();
-    DEAL_STAGES.forEach((s) => map.set(s.id, []));
+    pipelineStages.forEach((s) => map.set(s.id, []));
     filtered.forEach((d) => map.get(d.stage)?.push(d));
     return map;
-  }, [filtered]);
+  }, [filtered, pipelineStages]);
 
   const totals = useMemo(() => {
-    const open = deals.filter((d) => d.stage !== "won" && d.stage !== "lost");
-    const won = deals.filter((d) => d.stage === "won");
+    const wonIds = new Set(pipelineStages.filter((s) => s.type === "won").map((s) => s.id));
+    const lostIds = new Set(pipelineStages.filter((s) => s.type === "lost").map((s) => s.id));
+    const open = deals.filter((d) => !wonIds.has(d.stage) && !lostIds.has(d.stage));
+    const won = deals.filter((d) => wonIds.has(d.stage));
     const sum = (arr: Deal[]) => arr.reduce((acc, d) => acc + d.amount, 0);
     return {
       openCount: open.length,
@@ -98,7 +104,7 @@ export function SalesPage() {
       wonCount: won.length,
       wonAmount: sum(won),
     };
-  }, [deals]);
+  }, [deals, pipelineStages]);
 
   const selected = deals.find((d) => d.id === selectedDealId) ?? null;
 
@@ -144,6 +150,12 @@ export function SalesPage() {
             />
           </div>
           <button
+            onClick={() => setShowCustomize(true)}
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg border bg-background px-3 text-sm font-medium hover:bg-muted"
+          >
+            <Settings2 className="h-4 w-4" /> Personalizar embudo
+          </button>
+          <button
             onClick={() => setShowNew(true)}
             className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[var(--gradient-brand)] px-3 text-sm font-medium text-primary-foreground shadow-[var(--shadow-pop)] hover:opacity-95"
           >
@@ -155,7 +167,7 @@ export function SalesPage() {
       {/* Kanban */}
       <div className="flex flex-1 min-h-0 overflow-x-auto overflow-y-hidden bg-muted/30 px-4 py-4">
         <div className="flex gap-3">
-          {DEAL_STAGES.map((stage) => {
+          {pipelineStages.map((stage) => {
             const items = grouped.get(stage.id) ?? [];
             const total = items.reduce((acc, d) => acc + d.amount, 0);
             return (
@@ -238,6 +250,7 @@ export function SalesPage() {
       {/* Detail drawer */}
       {selected && <DealDetail deal={selected} onClose={() => selectDeal(null)} />}
       {showNew && <NewDealDialog onClose={() => setShowNew(false)} onCreate={(input) => { createDeal(input); setShowNew(false); }} />}
+      {showCustomize && <CustomizePipelineDialog onClose={() => setShowCustomize(false)} />}
     </div>
   );
 }
