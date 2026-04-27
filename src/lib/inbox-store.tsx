@@ -4,6 +4,7 @@ import {
   BOT_PAUSE_MS,
   DEFAULT_AI_SETTINGS,
   DEFAULT_ACCOUNT_SETTINGS,
+  DEAL_STAGES,
   type AISettings,
   type AccountSettings,
   type Attachment,
@@ -13,6 +14,7 @@ import {
   type DealComment,
   type DealStage,
   type Message,
+  type PipelineStage,
 } from "./inbox-types";
 
 interface InboxState {
@@ -44,6 +46,13 @@ interface InboxState {
   removeDealAttachment: (dealId: string, attachmentId: string) => void;
   addDealComment: (dealId: string, text: string, author?: string) => void;
   createDeal: (input: { title: string; contactId: string; stage?: DealStage; amount?: number; currency?: string }) => string;
+  // Pipeline stages (customizable funnel)
+  pipelineStages: PipelineStage[];
+  addPipelineStage: (stage: Omit<PipelineStage, "id"> & { id?: string }) => string;
+  updatePipelineStage: (id: string, patch: Partial<Omit<PipelineStage, "id">>) => void;
+  removePipelineStage: (id: string, fallbackId?: string) => void;
+  reorderPipelineStage: (id: string, direction: -1 | 1) => void;
+  resetPipelineStages: () => void;
   // AI settings
   aiSettings: AISettings;
   updateAISettings: (patch: Partial<AISettings>) => void;
