@@ -20,9 +20,8 @@ function formatRemaining(ms: number) {
 }
 
 export function ChatPanel() {
-  const { selectedConversationId, conversations, contacts, messages, sendAgentMessage, resumeBot, resolveConversation, deals, createDeal, pipelineStages, selectDeal, saveContact } =
+  const { selectedConversationId, conversations, contacts, messages, sendAgentMessage, resumeBot, resolveConversation, deals, createDeal, pipelineStages, selectDeal, saveContact, selectConversation } =
     useInbox();
-  const { selectConversation } = useInbox();
   const navigate = useNavigate();
   const conv = conversations.find((c) => c.id === selectedConversationId) ?? null;
   const contact = conv ? contacts.find((c) => c.id === conv.contactId) ?? null : null;
