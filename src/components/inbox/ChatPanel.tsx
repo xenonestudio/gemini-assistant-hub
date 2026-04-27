@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Bot, Send, CheckCircle2, Play, Paperclip, Smile, MoreHorizontal, TrendingUp } from "lucide-react";
+import { Bot, Send, CheckCircle2, Play, Paperclip, Smile, MoreHorizontal, TrendingUp, UserPlus } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { useInbox } from "@/lib/inbox-store";
@@ -20,7 +20,7 @@ function formatRemaining(ms: number) {
 }
 
 export function ChatPanel() {
-  const { selectedConversationId, conversations, contacts, messages, sendAgentMessage, resumeBot, resolveConversation, deals, createDeal, pipelineStages, selectDeal } =
+  const { selectedConversationId, conversations, contacts, messages, sendAgentMessage, resumeBot, resolveConversation, deals, createDeal, pipelineStages, selectDeal, saveContact } =
     useInbox();
   const navigate = useNavigate();
   const conv = conversations.find((c) => c.id === selectedConversationId) ?? null;
@@ -32,6 +32,7 @@ export function ChatPanel() {
 
   const [draft, setDraft] = useState("");
   const [showDeal, setShowDeal] = useState(false);
+  const [showSave, setShowSave] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -73,11 +74,26 @@ export function ChatPanel() {
             <div className="flex items-center gap-2">
               <h3 className="text-sm font-semibold">{contact.name}</h3>
               <ChannelBadge channel={contact.channel} />
+              {!contact.saved && (
+                <span className="rounded-md bg-warning/15 px-1.5 py-0.5 text-[10px] font-medium text-warning-foreground">
+                  No guardado
+                </span>
+              )}
             </div>
             <div className="text-xs text-muted-foreground">{contact.phone}</div>
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {!contact.saved && (
+            <button
+              onClick={() => setShowSave(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg border bg-background px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted"
+              title="Agregar este número a tus contactos"
+            >
+              <UserPlus className="h-3.5 w-3.5" />
+              Agregar a contactos
+            </button>
+          )}
           {existingDeal ? (
             <button
               onClick={() => {
@@ -119,6 +135,20 @@ export function ChatPanel() {
           stages={pipelineStages.map((s) => ({ id: s.id, label: s.label }))}
           onClose={() => setShowDeal(false)}
           onSubmit={handleCreateDeal}
+        />
+      )}
+
+      {showSave && (
+        <SaveContactDialog
+          phone={contact.phone}
+          channel={contact.channel}
+          defaultName={contact.name}
+          onClose={() => setShowSave(false)}
+          onSubmit={(patch) => {
+            saveContact(contact.id, patch);
+            setShowSave(false);
+            toast.success("Contacto guardado", { description: `${patch.name} se añadió a tu lista.` });
+          }}
         />
       )}
 
@@ -302,6 +332,91 @@ function SendToFunnelDialog({
             className="rounded-lg bg-[var(--gradient-brand)] px-3 py-1.5 text-sm font-medium text-primary-foreground shadow-[var(--shadow-pop)] disabled:opacity-40"
           >
             Crear y abrir
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+function SaveContactDialog({
+  phone,
+  channel,
+  defaultName,
+  onClose,
+  onSubmit,
+}: {
+  phone: string;
+  channel: string;
+  defaultName: string;
+  onClose: () => void;
+  onSubmit: (patch: { name: string; email?: string; tags: string[] }) => void;
+}) {
+  const looksLikePhone = /^\+?[\d\s()-]+$/.test(defaultName.trim());
+  const [name, setName] = useState(looksLikePhone ? "" : defaultName);
+  const [email, setEmail] = useState("");
+  const [tagsStr, setTagsStr] = useState("");
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4" onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} className="w-full max-w-md rounded-2xl border bg-card p-5 shadow-2xl">
+        <div className="mb-1 flex items-center gap-2">
+          <span className="grid h-7 w-7 place-items-center rounded-full bg-primary-soft text-primary">+</span>
+          <h3 className="text-base font-semibold">Agregar a contactos</h3>
+        </div>
+        <p className="mb-4 text-xs text-muted-foreground">
+          Guarda este número ({phone} · {channel}) en tu lista de contactos para gestionarlo mejor.
+        </p>
+        <div className="flex flex-col gap-3 text-sm">
+          <label>
+            <span className="mb-1 block text-xs font-medium text-muted-foreground">Nombre *</span>
+            <input
+              autoFocus
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Ej. Juan Pérez"
+              className="h-9 w-full rounded-lg border bg-background px-3 outline-none focus:ring-2 focus:ring-ring/40"
+            />
+          </label>
+          <label>
+            <span className="mb-1 block text-xs font-medium text-muted-foreground">Email (opcional)</span>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="correo@ejemplo.com"
+              className="h-9 w-full rounded-lg border bg-background px-3 outline-none focus:ring-2 focus:ring-ring/40"
+            />
+          </label>
+          <label>
+            <span className="mb-1 block text-xs font-medium text-muted-foreground">Etiquetas (separadas por coma)</span>
+            <input
+              value={tagsStr}
+              onChange={(e) => setTagsStr(e.target.value)}
+              placeholder="Lead, VIP"
+              className="h-9 w-full rounded-lg border bg-background px-3 outline-none focus:ring-2 focus:ring-ring/40"
+            />
+          </label>
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <button onClick={onClose} className="rounded-lg border px-3 py-1.5 text-sm hover:bg-muted">
+            Cancelar
+          </button>
+          <button
+            onClick={() =>
+              name.trim() &&
+              onSubmit({
+                name: name.trim(),
+                email: email.trim() || undefined,
+                tags: tagsStr
+                  .split(",")
+                  .map((t) => t.trim())
+                  .filter(Boolean),
+              })
+            }
+            disabled={!name.trim()}
+            className="rounded-lg bg-[var(--gradient-brand)] px-3 py-1.5 text-sm font-medium text-primary-foreground shadow-[var(--shadow-pop)] disabled:opacity-40"
+          >
+            Guardar contacto
           </button>
         </div>
       </div>
