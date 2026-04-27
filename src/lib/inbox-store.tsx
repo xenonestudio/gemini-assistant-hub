@@ -3,7 +3,9 @@ import { initialContacts, initialConversations, initialDeals, initialMessages } 
 import {
   BOT_PAUSE_MS,
   DEFAULT_AI_SETTINGS,
+  DEFAULT_ACCOUNT_SETTINGS,
   type AISettings,
+  type AccountSettings,
   type Attachment,
   type Contact,
   type Conversation,
@@ -46,6 +48,11 @@ interface InboxState {
   aiSettings: AISettings;
   updateAISettings: (patch: Partial<AISettings>) => void;
   resetAISettings: () => void;
+  // Account
+  account: AccountSettings;
+  updateAccount: (patch: Partial<AccountSettings>) => void;
+  resetAccount: () => void;
+  deleteAccount: () => void;
 }
 
 const InboxContext = createContext<InboxState | null>(null);
@@ -73,6 +80,7 @@ export function InboxProvider({ children }: { children: ReactNode }) {
   const [deals, setDeals] = useState<Deal[]>(initialDeals);
   const [selectedDealId, setSelectedDealId] = useState<string | null>(initialDeals[0]?.id ?? null);
   const [aiSettings, setAISettings] = useState<AISettings>(DEFAULT_AI_SETTINGS);
+  const [account, setAccount] = useState<AccountSettings>(DEFAULT_ACCOUNT_SETTINGS);
 
   // Tick every 30s so the "bot paused" countdown re-renders
   const [, setTick] = useState(0);
@@ -273,6 +281,15 @@ export function InboxProvider({ children }: { children: ReactNode }) {
   }, []);
   const resetAISettings = useCallback(() => setAISettings(DEFAULT_AI_SETTINGS), []);
 
+  const updateAccount = useCallback((patch: Partial<AccountSettings>) => {
+    setAccount((prev) => ({ ...prev, ...patch }));
+  }, []);
+  const resetAccount = useCallback(() => setAccount(DEFAULT_ACCOUNT_SETTINGS), []);
+  const deleteAccount = useCallback(() => {
+    // Demo: limpia datos locales
+    setAccount(DEFAULT_ACCOUNT_SETTINGS);
+  }, []);
+
   const value = useMemo<InboxState>(
     () => ({
       contacts,
@@ -303,6 +320,10 @@ export function InboxProvider({ children }: { children: ReactNode }) {
       aiSettings,
       updateAISettings,
       resetAISettings,
+      account,
+      updateAccount,
+      resetAccount,
+      deleteAccount,
     }),
     [
       contacts,
@@ -333,6 +354,10 @@ export function InboxProvider({ children }: { children: ReactNode }) {
       aiSettings,
       updateAISettings,
       resetAISettings,
+      account,
+      updateAccount,
+      resetAccount,
+      deleteAccount,
     ],
   );
 
