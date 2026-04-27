@@ -109,15 +109,24 @@ export const DEFAULT_ACCOUNT_SETTINGS: AccountSettings = {
   twoFactorEnabled: false,
 };
 
-export type DealStage = "new" | "qualified" | "proposal" | "negotiation" | "won" | "lost";
+/** Stage id — string so it supports user-defined custom stages. */
+export type DealStage = string;
 
-export const DEAL_STAGES: { id: DealStage; label: string; accent: string }[] = [
+export interface PipelineStage {
+  id: string;
+  label: string;
+  accent: string;
+  /** Stages flagged as terminal won/lost are excluded from "open" totals */
+  type?: "open" | "won" | "lost";
+}
+
+export const DEAL_STAGES: PipelineStage[] = [
   { id: "new", label: "Nuevos", accent: "oklch(0.7 0.14 250)" },
   { id: "qualified", label: "Calificados", accent: "oklch(0.7 0.16 200)" },
   { id: "proposal", label: "Propuesta", accent: "oklch(0.72 0.17 285)" },
   { id: "negotiation", label: "Negociación", accent: "oklch(0.78 0.15 75)" },
-  { id: "won", label: "Ganados", accent: "oklch(0.7 0.16 155)" },
-  { id: "lost", label: "Perdidos", accent: "oklch(0.62 0.2 25)" },
+  { id: "won", label: "Ganados", accent: "oklch(0.7 0.16 155)", type: "won" },
+  { id: "lost", label: "Perdidos", accent: "oklch(0.62 0.2 25)", type: "lost" },
 ];
 
 export interface Attachment {

@@ -17,11 +17,14 @@ import {
   GripVertical,
   Send,
   Tag,
+  Settings2,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import { useInbox } from "@/lib/inbox-store";
-import { DEAL_STAGES, type Attachment, type Deal, type DealStage } from "@/lib/inbox-types";
+import { type Attachment, type Deal, type DealStage, type PipelineStage } from "@/lib/inbox-types";
 import { ContactAvatar } from "./Avatar";
 import { cn } from "@/lib/utils";
 
@@ -64,9 +67,10 @@ function attachmentTint(kind: Attachment["kind"]) {
 }
 
 export function SalesPage() {
-  const { deals, contacts, selectedDealId, selectDeal, moveDeal, createDeal } = useInbox();
+  const { deals, contacts, selectedDealId, selectDeal, moveDeal, createDeal, pipelineStages } = useInbox();
   const [query, setQuery] = useState("");
   const [showNew, setShowNew] = useState(false);
+  const [showCustomize, setShowCustomize] = useState(false);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -83,14 +87,16 @@ export function SalesPage() {
 
   const grouped = useMemo(() => {
     const map = new Map<DealStage, Deal[]>();
-    DEAL_STAGES.forEach((s) => map.set(s.id, []));
+    pipelineStages.forEach((s) => map.set(s.id, []));
     filtered.forEach((d) => map.get(d.stage)?.push(d));
     return map;
-  }, [filtered]);
+  }, [filtered, pipelineStages]);
 
   const totals = useMemo(() => {
-    const open = deals.filter((d) => d.stage !== "won" && d.stage !== "lost");
-    const won = deals.filter((d) => d.stage === "won");
+    const wonIds = new Set(pipelineStages.filter((s) => s.type === "won").map((s) => s.id));
+    const lostIds = new Set(pipelineStages.filter((s) => s.type === "lost").map((s) => s.id));
+    const open = deals.filter((d) => !wonIds.has(d.stage) && !lostIds.has(d.stage));
+    const won = deals.filter((d) => wonIds.has(d.stage));
     const sum = (arr: Deal[]) => arr.reduce((acc, d) => acc + d.amount, 0);
     return {
       openCount: open.length,
@@ -98,7 +104,7 @@ export function SalesPage() {
       wonCount: won.length,
       wonAmount: sum(won),
     };
-  }, [deals]);
+  }, [deals, pipelineStages]);
 
   const selected = deals.find((d) => d.id === selectedDealId) ?? null;
 
@@ -144,6 +150,12 @@ export function SalesPage() {
             />
           </div>
           <button
+            onClick={() => setShowCustomize(true)}
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg border bg-background px-3 text-sm font-medium hover:bg-muted"
+          >
+            <Settings2 className="h-4 w-4" /> Personalizar embudo
+          </button>
+          <button
             onClick={() => setShowNew(true)}
             className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[var(--gradient-brand)] px-3 text-sm font-medium text-primary-foreground shadow-[var(--shadow-pop)] hover:opacity-95"
           >
@@ -155,7 +167,7 @@ export function SalesPage() {
       {/* Kanban */}
       <div className="flex flex-1 min-h-0 overflow-x-auto overflow-y-hidden bg-muted/30 px-4 py-4">
         <div className="flex gap-3">
-          {DEAL_STAGES.map((stage) => {
+          {pipelineStages.map((stage) => {
             const items = grouped.get(stage.id) ?? [];
             const total = items.reduce((acc, d) => acc + d.amount, 0);
             return (
@@ -238,12 +250,13 @@ export function SalesPage() {
       {/* Detail drawer */}
       {selected && <DealDetail deal={selected} onClose={() => selectDeal(null)} />}
       {showNew && <NewDealDialog onClose={() => setShowNew(false)} onCreate={(input) => { createDeal(input); setShowNew(false); }} />}
+      {showCustomize && <CustomizePipelineDialog onClose={() => setShowCustomize(false)} />}
     </div>
   );
 }
 
 function DealDetail({ deal, onClose }: { deal: Deal; onClose: () => void }) {
-  const { contacts, messages, addDealAttachment, removeDealAttachment, addDealComment, updateDeal, moveDeal } = useInbox();
+  const { contacts, messages, addDealAttachment, removeDealAttachment, addDealComment, updateDeal, moveDeal, pipelineStages } = useInbox();
   const contact = contacts.find((c) => c.id === deal.contactId);
   const chatFiles = useMemo(
     () => messages.filter((m) => m.conversationId === deal.conversationId && /\.(png|jpg|jpeg|pdf|docx?|xlsx?)$/i.test(m.text)),
@@ -290,10 +303,10 @@ function DealDetail({ deal, onClose }: { deal: Deal; onClose: () => void }) {
             <div className="flex items-center gap-2">
               <span
                 className="h-2 w-2 rounded-full"
-                style={{ backgroundColor: DEAL_STAGES.find((s) => s.id === deal.stage)?.accent }}
+                style={{ backgroundColor: pipelineStages.find((s) => s.id === deal.stage)?.accent }}
               />
               <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                {DEAL_STAGES.find((s) => s.id === deal.stage)?.label}
+                {pipelineStages.find((s) => s.id === deal.stage)?.label ?? deal.stage}
               </span>
             </div>
             <h2 className="mt-1 truncate text-base font-semibold">{deal.title}</h2>
@@ -333,7 +346,7 @@ function DealDetail({ deal, onClose }: { deal: Deal; onClose: () => void }) {
 
         {/* Stage selector */}
         <div className="flex flex-wrap gap-1.5 border-b px-5 py-3">
-          {DEAL_STAGES.map((s) => {
+          {pipelineStages.map((s) => {
             const active = s.id === deal.stage;
             return (
               <button
@@ -579,12 +592,12 @@ function NewDealDialog({
   onClose: () => void;
   onCreate: (input: { title: string; contactId: string; amount: number; currency: string; stage: DealStage }) => void;
 }) {
-  const { contacts } = useInbox();
+  const { contacts, pipelineStages } = useInbox();
   const [title, setTitle] = useState("");
   const [contactId, setContactId] = useState(contacts[0]?.id ?? "");
   const [amount, setAmount] = useState(0);
   const [currency, setCurrency] = useState("USD");
-  const [stage, setStage] = useState<DealStage>("new");
+  const [stage, setStage] = useState<DealStage>(pipelineStages[0]?.id ?? "new");
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4" onClick={onClose}>
@@ -650,7 +663,7 @@ function NewDealDialog({
               onChange={(e) => setStage(e.target.value as DealStage)}
               className="h-9 w-full rounded-lg border bg-background px-2 outline-none focus:ring-2 focus:ring-ring/40"
             >
-              {DEAL_STAGES.map((s) => (
+              {pipelineStages.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.label}
                 </option>
@@ -671,6 +684,199 @@ function NewDealDialog({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+const STAGE_COLOR_PRESETS = [
+  "oklch(0.7 0.14 250)",
+  "oklch(0.7 0.16 200)",
+  "oklch(0.72 0.17 285)",
+  "oklch(0.78 0.15 75)",
+  "oklch(0.7 0.16 155)",
+  "oklch(0.62 0.2 25)",
+  "oklch(0.65 0.2 145)",
+  "oklch(0.6 0.22 320)",
+];
+
+function CustomizePipelineDialog({ onClose }: { onClose: () => void }) {
+  const { pipelineStages, addPipelineStage, updatePipelineStage, removePipelineStage, reorderPipelineStage, resetPipelineStages, deals } =
+    useInbox();
+  const [newLabel, setNewLabel] = useState("");
+  const [newColor, setNewColor] = useState(STAGE_COLOR_PRESETS[2]);
+
+  const counts = useMemo(() => {
+    const m = new Map<string, number>();
+    deals.forEach((d) => m.set(d.stage, (m.get(d.stage) ?? 0) + 1));
+    return m;
+  }, [deals]);
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4" onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} className="flex max-h-[85vh] w-full max-w-xl flex-col rounded-2xl border bg-card shadow-2xl">
+        <div className="flex items-center justify-between border-b px-5 py-4">
+          <div>
+            <h3 className="text-base font-semibold">Personalizar embudo</h3>
+            <p className="text-xs text-muted-foreground">Crea, renombra o reordena las etapas de tu pipeline.</p>
+          </div>
+          <button onClick={onClose} className="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground hover:bg-muted">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-5 py-4">
+          <div className="flex flex-col gap-2">
+            {pipelineStages.map((s, idx) => (
+              <StageRow
+                key={s.id}
+                stage={s}
+                count={counts.get(s.id) ?? 0}
+                isFirst={idx === 0}
+                isLast={idx === pipelineStages.length - 1}
+                canDelete={pipelineStages.length > 2}
+                onLabel={(label) => updatePipelineStage(s.id, { label })}
+                onColor={(accent) => updatePipelineStage(s.id, { accent })}
+                onType={(type) => updatePipelineStage(s.id, { type })}
+                onUp={() => reorderPipelineStage(s.id, -1)}
+                onDown={() => reorderPipelineStage(s.id, 1)}
+                onDelete={() => removePipelineStage(s.id)}
+              />
+            ))}
+          </div>
+
+          <div className="mt-5 rounded-xl border bg-background p-3">
+            <div className="text-xs font-semibold text-muted-foreground">Agregar etapa</div>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <input
+                value={newLabel}
+                onChange={(e) => setNewLabel(e.target.value)}
+                placeholder="Nombre (ej. Demo agendada)"
+                className="h-9 flex-1 min-w-[180px] rounded-lg border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring/40"
+              />
+              <ColorPicker value={newColor} onChange={setNewColor} />
+              <button
+                onClick={() => {
+                  if (!newLabel.trim()) return;
+                  addPipelineStage({ label: newLabel.trim(), accent: newColor, type: "open" });
+                  setNewLabel("");
+                }}
+                disabled={!newLabel.trim()}
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[var(--gradient-brand)] px-3 text-sm font-medium text-primary-foreground shadow-[var(--shadow-pop)] disabled:opacity-40"
+              >
+                <Plus className="h-3.5 w-3.5" /> Agregar
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between border-t px-5 py-3">
+          <button onClick={resetPipelineStages} className="text-xs font-medium text-muted-foreground hover:text-foreground">
+            Restaurar predeterminadas
+          </button>
+          <button onClick={onClose} className="rounded-lg bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-95">
+            Listo
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StageRow({
+  stage,
+  count,
+  isFirst,
+  isLast,
+  canDelete,
+  onLabel,
+  onColor,
+  onType,
+  onUp,
+  onDown,
+  onDelete,
+}: {
+  stage: PipelineStage;
+  count: number;
+  isFirst: boolean;
+  isLast: boolean;
+  canDelete: boolean;
+  onLabel: (v: string) => void;
+  onColor: (v: string) => void;
+  onType: (v: "open" | "won" | "lost") => void;
+  onUp: () => void;
+  onDown: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-2 rounded-lg border bg-background p-2">
+      <div className="flex flex-col">
+        <button onClick={onUp} disabled={isFirst} className="grid h-5 w-5 place-items-center rounded text-muted-foreground hover:bg-muted disabled:opacity-30">
+          <ArrowUp className="h-3 w-3" />
+        </button>
+        <button onClick={onDown} disabled={isLast} className="grid h-5 w-5 place-items-center rounded text-muted-foreground hover:bg-muted disabled:opacity-30">
+          <ArrowDown className="h-3 w-3" />
+        </button>
+      </div>
+      <ColorPicker value={stage.accent} onChange={onColor} />
+      <input
+        value={stage.label}
+        onChange={(e) => onLabel(e.target.value)}
+        className="h-9 flex-1 min-w-0 rounded-lg border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring/40"
+      />
+      <select
+        value={stage.type ?? "open"}
+        onChange={(e) => onType(e.target.value as "open" | "won" | "lost")}
+        className="h-9 rounded-lg border bg-card px-2 text-xs outline-none"
+        title="Tipo de etapa"
+      >
+        <option value="open">Abierta</option>
+        <option value="won">Ganada</option>
+        <option value="lost">Perdida</option>
+      </select>
+      <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground" title="Oportunidades en esta etapa">
+        {count}
+      </span>
+      <button
+        onClick={onDelete}
+        disabled={!canDelete}
+        className="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-30"
+        title={canDelete ? "Eliminar etapa" : "Debes mantener al menos 2 etapas"}
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
+}
+
+function ColorPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="h-7 w-7 rounded-full border-2 border-card shadow ring-1 ring-border"
+        style={{ backgroundColor: value }}
+        title="Color"
+      />
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute left-0 z-20 mt-2 grid grid-cols-4 gap-1.5 rounded-lg border bg-popover p-2 shadow-lg">
+            {STAGE_COLOR_PRESETS.map((c) => (
+              <button
+                key={c}
+                onClick={() => {
+                  onChange(c);
+                  setOpen(false);
+                }}
+                className={cn("h-6 w-6 rounded-full ring-1 ring-border", value === c && "ring-2 ring-primary")}
+                style={{ backgroundColor: c }}
+              />
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }
