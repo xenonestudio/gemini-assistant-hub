@@ -28,6 +28,9 @@ interface InboxState {
   resumeBot: (conversationId: string) => void;
   markAsRead: (conversationId: string) => void;
   resolveConversation: (conversationId: string) => void;
+  deleteConversation: (conversationId: string) => void;
+  toggleUnread: (conversationId: string) => void;
+  toggleBotPause: (conversationId: string) => void;
   /** Simulates an incoming message from a contact (for the demo webhook button) */
   simulateIncoming: (contactId: string, text: string) => void;
   // Contact CRUD
@@ -145,6 +148,28 @@ export function InboxProvider({ children }: { children: ReactNode }) {
   const resolveConversation = useCallback((conversationId: string) => {
     setConversations((prev) =>
       prev.map((c) => (c.id === conversationId ? { ...c, status: c.status === "open" ? "resolved" : "open" } : c)),
+    );
+  }, []);
+
+  const deleteConversation = useCallback((conversationId: string) => {
+    setConversations((prev) => prev.filter((c) => c.id !== conversationId));
+    setMessages((prev) => prev.filter((m) => m.conversationId !== conversationId));
+    setSelectedConversationId((cur) => (cur === conversationId ? null : cur));
+  }, []);
+
+  const toggleUnread = useCallback((conversationId: string) => {
+    setConversations((prev) =>
+      prev.map((c) => (c.id === conversationId ? { ...c, unread: c.unread > 0 ? 0 : 1 } : c)),
+    );
+  }, []);
+
+  const toggleBotPause = useCallback((conversationId: string) => {
+    setConversations((prev) =>
+      prev.map((c) => {
+        if (c.id !== conversationId) return c;
+        const isPaused = c.botPausedUntil && c.botPausedUntil > Date.now();
+        return { ...c, botPausedUntil: isPaused ? null : Date.now() + BOT_PAUSE_MS };
+      }),
     );
   }, []);
 
@@ -388,6 +413,9 @@ export function InboxProvider({ children }: { children: ReactNode }) {
       resumeBot,
       markAsRead,
       resolveConversation,
+      deleteConversation,
+      toggleUnread,
+      toggleBotPause,
       simulateIncoming,
       addContact,
       updateContact,
@@ -431,6 +459,9 @@ export function InboxProvider({ children }: { children: ReactNode }) {
       resumeBot,
       markAsRead,
       resolveConversation,
+      deleteConversation,
+      toggleUnread,
+      toggleBotPause,
       simulateIncoming,
       addContact,
       updateContact,
