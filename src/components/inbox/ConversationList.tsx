@@ -1,14 +1,22 @@
 import { useMemo, useState } from "react";
-import { Search, Filter } from "lucide-react";
+import { Search, Filter, CheckCircle2, Mail, MailOpen, Trash2, Pause, Play, Ban, ShieldOff } from "lucide-react";
 import { useInbox } from "@/lib/inbox-store";
 import { ContactAvatar } from "./Avatar";
 import { ChannelBadge } from "./ChannelBadge";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNowStrict } from "date-fns";
 import { es } from "date-fns/locale";
+import { MoreMenu, type MenuAction } from "./MoreMenu";
+import { useAuth } from "@/lib/auth-store";
+import { toast } from "sonner";
 
 export function ConversationList() {
-  const { conversations, contacts, selectedConversationId, selectConversation, messages } = useInbox();
+  const {
+    conversations, contacts, selectedConversationId, selectConversation, messages,
+    resolveConversation, deleteConversation, toggleUnread, toggleBotPause,
+    toggleBlockContact, resumeBot,
+  } = useInbox();
+  const { isAdmin } = useAuth();
   const [q, setQ] = useState("");
   const [tab, setTab] = useState<"open" | "resolved" | "all">("open");
 
@@ -65,59 +73,116 @@ export function ConversationList() {
         {items.map(({ conv, contact, last }) => {
           const active = conv.id === selectedConversationId;
           const paused = conv.botPausedUntil && conv.botPausedUntil > Date.now();
+          const itemActions: MenuAction[] = [
+            {
+              label: conv.status === "open" ? "Marcar resuelta" : "Reabrir",
+              icon: CheckCircle2,
+              onClick: () => {
+                resolveConversation(conv.id);
+                toast.success(conv.status === "open" ? "Conversación resuelta" : "Conversación reabierta");
+              },
+            },
+            {
+              label: conv.unread > 0 ? "Marcar como leída" : "Marcar como no leída",
+              icon: conv.unread > 0 ? MailOpen : Mail,
+              onClick: () => toggleUnread(conv.id),
+            },
+            {
+              label: paused ? "Reactivar bot" : "Pausar bot 30 min",
+              icon: paused ? Play : Pause,
+              onClick: () => {
+                if (paused) {
+                  resumeBot(conv.id);
+                  toast.success("Bot reactivado");
+                } else {
+                  toggleBotPause(conv.id);
+                  toast("Bot pausado");
+                }
+              },
+              divider: true,
+            },
+            {
+              label: contact.blocked ? "Desbloquear contacto" : "Bloquear contacto",
+              icon: contact.blocked ? ShieldOff : Ban,
+              onClick: () => {
+                toggleBlockContact(contact.id);
+                toast(contact.blocked ? "Contacto desbloqueado" : "Contacto bloqueado");
+              },
+              destructive: !contact.blocked,
+            },
+            {
+              label: "Eliminar conversación",
+              icon: Trash2,
+              onClick: () => {
+                if (typeof window !== "undefined" && !window.confirm("¿Eliminar esta conversación?")) return;
+                deleteConversation(conv.id);
+                toast.success("Conversación eliminada");
+              },
+              destructive: true,
+              divider: true,
+              hidden: !isAdmin,
+            },
+          ];
           return (
             <li key={conv.id}>
-              <button
-                onClick={() => selectConversation(conv.id)}
+              <div
                 className={cn(
-                  "group flex w-full gap-3 border-l-2 px-4 py-3 text-left transition",
+                  "group relative flex w-full gap-3 border-l-2 px-4 py-3 transition",
                   active
                     ? "border-l-primary bg-primary-soft/40"
                     : "border-l-transparent hover:bg-muted/40",
                 )}
               >
-                <ContactAvatar name={contact.name} color={contact.avatarColor} size={42} />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <span className="truncate text-sm font-semibold">{contact.name}</span>
-                      <ChannelBadge channel={contact.channel} />
+                <button
+                  onClick={() => selectConversation(conv.id)}
+                  className="flex flex-1 min-w-0 gap-3 text-left"
+                >
+                  <ContactAvatar name={contact.name} color={contact.avatarColor} size={42} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="truncate text-sm font-semibold">{contact.name}</span>
+                        <ChannelBadge channel={contact.channel} />
+                      </div>
+                      <span className="shrink-0 text-[11px] text-muted-foreground" suppressHydrationWarning>
+                        {formatDistanceToNowStrict(conv.lastMessageAt, { locale: es, addSuffix: false })}
+                      </span>
                     </div>
-                    <span className="shrink-0 text-[11px] text-muted-foreground" suppressHydrationWarning>
-                      {formatDistanceToNowStrict(conv.lastMessageAt, { locale: es, addSuffix: false })}
-                    </span>
-                  </div>
-                  <div className="mt-0.5 flex items-center justify-between gap-2">
-                    <p className="truncate text-xs text-muted-foreground">
-                      {last?.sender === "agent" && <span className="font-medium text-foreground/70">Tú: </span>}
-                      {last?.sender === "bot" && <span className="font-medium text-primary">Bot: </span>}
-                      {last?.text}
-                    </p>
-                    <div className="flex shrink-0 items-center gap-1">
-                      {contact.blocked && (
-                        <span className="rounded-md bg-destructive/10 px-1.5 py-0.5 text-[10px] font-medium text-destructive">
-                          Bloqueado
-                        </span>
-                      )}
-                      {!contact.saved && !contact.blocked && (
-                        <span className="rounded-md bg-warning/15 px-1.5 py-0.5 text-[10px] font-medium text-warning-foreground">
-                          No guardado
-                        </span>
-                      )}
-                      {paused && !contact.blocked && (
-                        <span className="rounded-md bg-warning/15 px-1.5 py-0.5 text-[10px] font-medium text-warning-foreground">
-                          Pausado
-                        </span>
-                      )}
-                      {conv.unread > 0 && (
-                        <span className="grid h-5 min-w-5 place-items-center rounded-full bg-primary px-1.5 text-[10px] font-semibold text-primary-foreground">
-                          {conv.unread}
-                        </span>
-                      )}
+                    <div className="mt-0.5 flex items-center justify-between gap-2">
+                      <p className="truncate text-xs text-muted-foreground">
+                        {last?.sender === "agent" && <span className="font-medium text-foreground/70">Tú: </span>}
+                        {last?.sender === "bot" && <span className="font-medium text-primary">Bot: </span>}
+                        {last?.text}
+                      </p>
+                      <div className="flex shrink-0 items-center gap-1">
+                        {contact.blocked && (
+                          <span className="rounded-md bg-destructive/10 px-1.5 py-0.5 text-[10px] font-medium text-destructive">
+                            Bloqueado
+                          </span>
+                        )}
+                        {!contact.saved && !contact.blocked && (
+                          <span className="rounded-md bg-warning/15 px-1.5 py-0.5 text-[10px] font-medium text-warning-foreground">
+                            No guardado
+                          </span>
+                        )}
+                        {paused && !contact.blocked && (
+                          <span className="rounded-md bg-warning/15 px-1.5 py-0.5 text-[10px] font-medium text-warning-foreground">
+                            Pausado
+                          </span>
+                        )}
+                        {conv.unread > 0 && (
+                          <span className="grid h-5 min-w-5 place-items-center rounded-full bg-primary px-1.5 text-[10px] font-semibold text-primary-foreground">
+                            {conv.unread}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
+                </button>
+                <div className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 transition group-hover:opacity-100 focus-within:opacity-100">
+                  <MoreMenu actions={itemActions} align="right" variant="vertical" title="Opciones de la conversación" />
                 </div>
-              </button>
+              </div>
             </li>
           );
         })}
