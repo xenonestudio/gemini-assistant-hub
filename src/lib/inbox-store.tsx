@@ -48,6 +48,8 @@ interface InboxState {
   removeDealAttachment: (dealId: string, attachmentId: string) => void;
   addDealComment: (dealId: string, text: string, author?: string) => void;
   createDeal: (input: { title: string; contactId: string; stage?: DealStage; amount?: number; currency?: string }) => string;
+  deleteDeal: (dealId: string) => void;
+  deleteDealComment: (dealId: string, commentId: string) => void;
   // Pipeline stages (customizable funnel)
   pipelineStages: PipelineStage[];
   addPipelineStage: (stage: Omit<PipelineStage, "id"> & { id?: string }) => string;
