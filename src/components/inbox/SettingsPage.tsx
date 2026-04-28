@@ -22,6 +22,7 @@ import { AccountSettings } from "./AccountSettings";
 import { WhatsAppConnect } from "./WhatsAppConnect";
 import { UsersAdminPage } from "./UsersAdminPage";
 import { useAuth } from "@/lib/auth-store";
+import { cn } from "@/lib/utils";
 
 const MODELS: { id: GeminiModel; label: string; hint: string }[] = [
   { id: "gemini-2.5-flash-lite", label: "Gemini 2.5 Flash Lite", hint: "Más rápido y económico" },
