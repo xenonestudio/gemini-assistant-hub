@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { Link, useLocation } from "@tanstack/react-router";
-import { Bot, Inbox, Users, Settings, BarChart3, Sparkles, Trello, LogOut } from "lucide-react";
+import { Bot, Inbox, Users, Settings, BarChart3, Sparkles, Trello, LogOut, ShieldCheck, Shield } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-store";
 import { toast } from "sonner";
@@ -16,7 +16,7 @@ const items = [
 
 export function Sidebar() {
   const { pathname } = useLocation();
-  const { user, logout } = useAuth();
+  const { user, logout, setRole, isAdmin } = useAuth();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -75,7 +75,22 @@ export function Sidebar() {
             <div className="border-b px-2 py-2">
               <div className="truncate text-sm font-semibold">{user?.name}</div>
               <div className="truncate text-xs text-muted-foreground">{user?.email}</div>
+              <div className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-foreground/70">
+                {isAdmin ? <ShieldCheck className="h-3 w-3 text-primary" /> : <Shield className="h-3 w-3" />}
+                {isAdmin ? "Administrador" : "Agente"}
+              </div>
             </div>
+            <button
+              onClick={() => {
+                const next = isAdmin ? "agent" : "admin";
+                setRole(next);
+                toast.success(next === "admin" ? "Modo administrador activado" : "Modo agente activado");
+              }}
+              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-muted"
+            >
+              {isAdmin ? <Shield className="h-4 w-4" /> : <ShieldCheck className="h-4 w-4" />}
+              {isAdmin ? "Cambiar a agente" : "Cambiar a administrador"}
+            </button>
             <Link
               to="/settings"
               onClick={() => setOpen(false)}

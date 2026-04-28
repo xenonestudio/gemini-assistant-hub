@@ -48,6 +48,8 @@ interface InboxState {
   removeDealAttachment: (dealId: string, attachmentId: string) => void;
   addDealComment: (dealId: string, text: string, author?: string) => void;
   createDeal: (input: { title: string; contactId: string; stage?: DealStage; amount?: number; currency?: string }) => string;
+  deleteDeal: (dealId: string) => void;
+  deleteDealComment: (dealId: string, commentId: string) => void;
   // Pipeline stages (customizable funnel)
   pipelineStages: PipelineStage[];
   addPipelineStage: (stage: Omit<PipelineStage, "id"> & { id?: string }) => string;
@@ -306,6 +308,19 @@ export function InboxProvider({ children }: { children: ReactNode }) {
     return id;
   }, [conversations]);
 
+  const deleteDeal = useCallback<InboxState["deleteDeal"]>((dealId) => {
+    setDeals((prev) => prev.filter((d) => d.id !== dealId));
+    setSelectedDealId((cur) => (cur === dealId ? null : cur));
+  }, []);
+
+  const deleteDealComment = useCallback<InboxState["deleteDealComment"]>((dealId, commentId) => {
+    setDeals((prev) =>
+      prev.map((d) =>
+        d.id === dealId ? { ...d, comments: d.comments.filter((c) => c.id !== commentId), updatedAt: Date.now() } : d,
+      ),
+    );
+  }, []);
+
   const updateAISettings = useCallback((patch: Partial<AISettings>) => {
     setAISettings((prev) => ({ ...prev, ...patch }));
   }, []);
@@ -389,6 +404,8 @@ export function InboxProvider({ children }: { children: ReactNode }) {
       removeDealAttachment,
       addDealComment,
       createDeal,
+      deleteDeal,
+      deleteDealComment,
       aiSettings,
       updateAISettings,
       resetAISettings,
@@ -430,6 +447,8 @@ export function InboxProvider({ children }: { children: ReactNode }) {
       removeDealAttachment,
       addDealComment,
       createDeal,
+      deleteDeal,
+      deleteDealComment,
       aiSettings,
       updateAISettings,
       resetAISettings,
