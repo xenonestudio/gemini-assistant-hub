@@ -5,15 +5,18 @@ export interface AuthUser {
   name: string;
   email: string;
   avatarColor: string;
+  role: "admin" | "agent";
 }
 
 interface AuthState {
   user: AuthUser | null;
   isAuthenticated: boolean;
+  isAdmin: boolean;
   loading: boolean;
   login: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
   signup: (name: string, email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
   logout: () => void;
+  setRole: (role: "admin" | "agent") => void;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -48,11 +51,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!email.includes("@")) return { ok: false, error: "Email inválido" };
     if (password.length < 4) return { ok: false, error: "Contraseña demasiado corta" };
     const name = email.split("@")[0].replace(/[._-]/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
+    // Demo: cualquier email que empiece por "admin" o contenga "+admin" entra como administrador
+    const role: "admin" | "agent" = /(^admin)|(\+admin)/i.test(email) ? "admin" : "agent";
     persist({
       id: btoa(email).slice(0, 10),
       name: name || "Usuario",
       email,
       avatarColor: "oklch(0.65 0.2 280)",
+      role,
     });
     return { ok: true };
   }, []);
@@ -67,15 +73,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       name: name.trim(),
       email,
       avatarColor: "oklch(0.65 0.2 145)",
+      role: "agent",
     });
     return { ok: true };
   }, []);
 
   const logout = useCallback(() => persist(null), []);
 
+  const setRole = useCallback((role: "admin" | "agent") => {
+    setUser((prev) => {
+      if (!prev) return prev;
+      const next = { ...prev, role };
+      try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+  }, []);
+
   const value = useMemo<AuthState>(
-    () => ({ user, isAuthenticated: !!user, loading, login, signup, logout }),
-    [user, loading, login, signup, logout],
+    () => ({ user, isAuthenticated: !!user, isAdmin: user?.role === "admin", loading, login, signup, logout, setRole }),
+    [user, loading, login, signup, logout, setRole],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
