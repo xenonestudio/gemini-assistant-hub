@@ -24,6 +24,8 @@ interface InboxState {
   selectedConversationId: string | null;
   selectConversation: (id: string | null) => void;
   sendAgentMessage: (conversationId: string, text: string) => void;
+  /** Send an agent message with optional quoted reply */
+  sendAgentReply: (conversationId: string, text: string, replyToId?: string | null) => void;
   toggleBlockContact: (contactId: string) => void;
   resumeBot: (conversationId: string) => void;
   markAsRead: (conversationId: string) => void;
