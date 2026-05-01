@@ -21,8 +21,8 @@ export function LoginScreen() {
   };
 
   const fillDemo = () => {
-    setEmail("demo@pulse.app");
-    setPassword("demo1234");
+    setEmail("admin");
+    setPassword("admin123");
     setMode("login");
   };
 
@@ -91,13 +91,11 @@ export function LoginScreen() {
                 />
               </Field>
             )}
-            <Field icon={<Mail className="h-4 w-4" />} label="Email">
+    <Field icon={<Mail className="h-4 w-4" />} label="Usuario">
               <input
-                type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="tu@correo.com"
-                autoComplete="email"
+                placeholder="Nombre de usuario"
                 className="h-10 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
               />
             </Field>

@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { apiFetch, socket } from "./api";
 import { initialContacts, initialConversations, initialDeals, initialMessages } from "./inbox-data";
 import {
   BOT_PAUSE_MS,
@@ -69,6 +70,9 @@ interface InboxState {
   updateAccount: (patch: Partial<AccountSettings>) => void;
   resetAccount: () => void;
   deleteAccount: () => void;
+  // WhatsApp connection
+  whatsappQr: string | null;
+  whatsappStatus: 'connected' | 'disconnected' | 'loading' | 'error';
 }
 
 const InboxContext = createContext<InboxState | null>(null);
@@ -89,15 +93,159 @@ const AVATAR_COLORS = [
 ];
 
 export function InboxProvider({ children }: { children: ReactNode }) {
-  const [contacts, setContacts] = useState<Contact[]>(initialContacts);
-  const [conversations, setConversations] = useState<Conversation[]>(initialConversations);
-  const [messages, setMessages] = useState<Message[]>(initialMessages);
-  const [selectedConversationId, setSelectedConversationId] = useState<string | null>("v1");
-  const [deals, setDeals] = useState<Deal[]>(initialDeals);
-  const [selectedDealId, setSelectedDealId] = useState<string | null>(initialDeals[0]?.id ?? null);
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
+  const [deals, setDeals] = useState<Deal[]>([]); // Mantener deals locales por ahora
+  const [selectedDealId, setSelectedDealId] = useState<string | null>(null);
   const [aiSettings, setAISettings] = useState<AISettings>(DEFAULT_AI_SETTINGS);
   const [account, setAccount] = useState<AccountSettings>(DEFAULT_ACCOUNT_SETTINGS);
   const [pipelineStages, setPipelineStages] = useState<PipelineStage[]>(DEAL_STAGES);
+  const [isLoading, setIsLoading] = useState(true);
+  const [whatsappQr, setWhatsappQr] = useState<string | null>(null);
+  const [whatsappStatus, setWhatsappStatus] = useState<'connected' | 'disconnected' | 'loading' | 'error'>('loading');
+
+  // Carga inicial de conversaciones
+  useEffect(() => {
+    const loadConversations = async () => {
+      try {
+        const data = await apiFetch("/api/conversaciones");
+        const mappedConversations: Conversation[] = data.map((c: any) => ({
+          id: c.whatsapp_id,
+          contactId: c.whatsapp_id,
+          unread: 0, // El backend actual no devuelve unread count, se asume 0 por ahora
+          lastMessageAt: new Date(c.fecha_ultimo_mensaje).getTime(),
+          status: "open",
+          botPausedUntil: null,
+        }));
+
+        const mappedContacts: Contact[] = data.map((c: any) => ({
+          id: c.whatsapp_id,
+          name: c.cliente_nombre || c.whatsapp_id.split("@")[0],
+          phone: c.whatsapp_id.split("@")[0],
+          channel: "whatsapp",
+          tags: c.cliente_plan ? [c.cliente_plan] : [],
+          blocked: false,
+          avatarColor: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)],
+          saved: !!c.cliente_nombre,
+          createdAt: new Date(c.fecha_ultimo_mensaje).getTime(),
+        }));
+
+        setConversations(mappedConversations);
+        setContacts(mappedContacts);
+      } catch (error) {
+        console.error("Error cargando conversaciones:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadConversations();
+  }, []);
+
+  // Cargar mensajes cuando se selecciona una conversación
+  useEffect(() => {
+    if (!selectedConversationId) return;
+
+    const loadMessages = async () => {
+      try {
+        const data = await apiFetch(`/api/mensajes/${selectedConversationId}`);
+        const mappedMessages: Message[] = data.map((m: any) => ({
+          id: m.id.toString(),
+          conversationId: m.whatsapp_id,
+          sender: m.rol === "admin" ? "agent" : m.rol === "bot" ? "bot" : "contact",
+          text: m.mensaje,
+          createdAt: new Date(m.timestamp).getTime(),
+        }));
+        setMessages(mappedMessages);
+      } catch (error) {
+        console.error("Error cargando mensajes:", error);
+      }
+    };
+
+    loadMessages();
+  }, [selectedConversationId]);
+
+  // Sockets para mensajes en tiempo real
+  useEffect(() => {
+    const onNuevoMensaje = (datos: any) => {
+      const { whatsapp_id, rol, mensaje, timestamp, nombre } = datos;
+
+      const newMsg: Message = {
+        id: Math.random().toString(36).slice(2, 11),
+        conversationId: whatsapp_id,
+        sender: rol === "admin" ? "agent" : rol === "bot" ? "bot" : "contact",
+        text: mensaje,
+        createdAt: new Date(timestamp).getTime(),
+      };
+
+      setMessages((prev) => {
+        // Evitar duplicados si el mensaje ya llegó por carga inicial
+        if (prev.some((m) => m.text === mensaje && Math.abs(m.createdAt - newMsg.createdAt) < 2000)) {
+          return prev;
+        }
+        return [...prev, newMsg];
+      });
+
+      setConversations((prev) => {
+        const exists = prev.find((c) => c.id === whatsapp_id);
+        if (exists) {
+          return prev.map((c) =>
+            c.id === whatsapp_id
+              ? { ...c, lastMessageAt: newMsg.createdAt, unread: c.id === selectedConversationId ? 0 : c.unread + 1 }
+              : c,
+          ).sort((a, b) => b.lastMessageAt - a.lastMessageAt);
+        } else {
+          // Nueva conversación
+          const newConv: Conversation = {
+            id: whatsapp_id,
+            contactId: whatsapp_id,
+            unread: 1,
+            lastMessageAt: newMsg.createdAt,
+            status: "open",
+            botPausedUntil: null,
+          };
+          return [newConv, ...prev];
+        }
+      });
+
+      // Actualizar contacto si es nuevo
+      setContacts((prev) => {
+        if (prev.find((c) => c.id === whatsapp_id)) return prev;
+        const newContact: Contact = {
+          id: whatsapp_id,
+          name: nombre || whatsapp_id.split("@")[0],
+          phone: whatsapp_id.split("@")[0],
+          channel: "whatsapp",
+          tags: [],
+          blocked: false,
+          avatarColor: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)],
+          saved: !!nombre,
+          createdAt: new Date(timestamp).getTime(),
+        };
+        return [newContact, ...prev];
+      });
+    };
+
+    socket.on("nuevo_mensaje", onNuevoMensaje);
+    
+    socket.on("qr", (qr: string) => {
+      setWhatsappQr(qr);
+      setWhatsappStatus('disconnected');
+    });
+
+    socket.on("whatsapp_status", (status: any) => {
+      setWhatsappStatus(status);
+      if (status === 'connected') setWhatsappQr(null);
+    });
+
+    return () => {
+      socket.off("nuevo_mensaje", onNuevoMensaje);
+      socket.off("qr");
+      socket.off("whatsapp_status");
+    };
+  }, [selectedConversationId]);
 
   // Tick every 30s so the "bot paused" countdown re-renders
   const [, setTick] = useState(0);
@@ -117,24 +265,19 @@ export function InboxProvider({ children }: { children: ReactNode }) {
     setConversations((prev) => prev.map((c) => (c.id === conversationId ? { ...c, unread: 0 } : c)));
   }, []);
 
-  const sendAgentMessage = useCallback((conversationId: string, text: string) => {
+  const sendAgentMessage = useCallback(async (conversationId: string, text: string) => {
     const trimmed = text.trim();
     if (!trimmed) return;
-    const newMsg: Message = {
-      id: uid(),
-      conversationId,
-      sender: "agent",
-      text: trimmed,
-      createdAt: Date.now(),
-    };
-    setMessages((prev) => [...prev, newMsg]);
-    setConversations((prev) =>
-      prev.map((c) =>
-        c.id === conversationId
-          ? { ...c, lastMessageAt: newMsg.createdAt, botPausedUntil: Date.now() + BOT_PAUSE_MS, unread: 0 }
-          : c,
-      ),
-    );
+
+    try {
+      await apiFetch("/api/enviar-manual", {
+        method: "POST",
+        body: JSON.stringify({ whatsapp_id: conversationId, mensaje: trimmed }),
+      });
+      // El mensaje se añadirá a través del socket que el backend emite ("nuevo_mensaje")
+    } catch (error) {
+      console.error("Error enviando mensaje manual:", error);
+    }
   }, []);
 
   const toggleBlockContact = useCallback((contactId: string) => {
@@ -447,6 +590,8 @@ export function InboxProvider({ children }: { children: ReactNode }) {
       removePipelineStage,
       reorderPipelineStage,
       resetPipelineStages,
+      whatsappQr,
+      whatsappStatus,
     }),
     [
       contacts,
@@ -493,6 +638,8 @@ export function InboxProvider({ children }: { children: ReactNode }) {
       removePipelineStage,
       reorderPipelineStage,
       resetPipelineStages,
+      whatsappQr,
+      whatsappStatus,
     ],
   );
 

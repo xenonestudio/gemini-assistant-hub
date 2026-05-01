@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { apiFetch, setSocketToken, socket } from "./api";
 
 export interface AuthUser {
   id: string;
@@ -46,39 +47,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const login = useCallback(async (email: string, password: string) => {
-    await new Promise((r) => setTimeout(r, 500));
-    if (!email.includes("@")) return { ok: false, error: "Email inválido" };
-    if (password.length < 4) return { ok: false, error: "Contraseña demasiado corta" };
-    const name = email.split("@")[0].replace(/[._-]/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
-    // Demo: cualquier email que empiece por "admin" o contenga "+admin" entra como administrador
-    const role: "admin" | "agent" = /(^admin)|(\+admin)/i.test(email) ? "admin" : "agent";
-    persist({
-      id: btoa(email).slice(0, 10),
-      name: name || "Usuario",
-      email,
-      avatarColor: "oklch(0.65 0.2 280)",
-      role,
-    });
-    return { ok: true };
+  const login = useCallback(async (username: string, password: string) => {
+    try {
+      const data = await apiFetch("/api/login", {
+        method: "POST",
+        body: JSON.stringify({ username, password }),
+      });
+
+      if (data.token) {
+        localStorage.setItem("pulse.auth.token", data.token);
+        setSocketToken(data.token);
+        
+        // El backend de whatsapp actualmente solo devuelve token y mensaje. 
+        // Simulamos el objeto de usuario basándonos en el username por ahora.
+        const role: "admin" | "agent" = /(^admin)|(\+admin)/i.test(username) ? "admin" : "agent";
+        const authUser: AuthUser = {
+          id: btoa(username).slice(0, 10),
+          name: username.charAt(0).toUpperCase() + username.slice(1),
+          email: `${username}@xenon.com`, // Email ficticio ya que el backend usa username
+          avatarColor: "oklch(0.65 0.2 280)",
+          role,
+        };
+        
+        persist(authUser);
+        return { ok: true };
+      }
+      return { ok: false, error: "No se recibió token" };
+    } catch (error: any) {
+      return { ok: false, error: error.message };
+    }
   }, []);
 
   const signup = useCallback(async (name: string, email: string, password: string) => {
+    // Por ahora el backend de whatsapp no tiene endpoint de registro abierto
     await new Promise((r) => setTimeout(r, 500));
-    if (!name.trim()) return { ok: false, error: "El nombre es obligatorio" };
-    if (!email.includes("@")) return { ok: false, error: "Email inválido" };
-    if (password.length < 6) return { ok: false, error: "Mínimo 6 caracteres" };
-    persist({
-      id: btoa(email).slice(0, 10),
-      name: name.trim(),
-      email,
-      avatarColor: "oklch(0.65 0.2 145)",
-      role: "agent",
-    });
-    return { ok: true };
+    return { ok: false, error: "El registro no está habilitado en este entorno" };
   }, []);
 
-  const logout = useCallback(() => persist(null), []);
+  const logout = useCallback(() => {
+    localStorage.removeItem("pulse.auth.token");
+    socket.disconnect();
+    persist(null);
+  }, []);
 
   const setRole = useCallback((role: "admin" | "agent") => {
     setUser((prev) => {
