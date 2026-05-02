@@ -24,7 +24,7 @@ import type { Channel, Contact } from "@/lib/inbox-types";
 const CHANNELS: Channel[] = ["whatsapp", "webhook", "instagram", "messenger"];
 
 export function ContactsPage() {
-  const { contacts, conversations, toggleBlockContact, addContact, updateContact, deleteContact, selectConversation } = useInbox();
+  const { contacts, conversations, toggleBlockContact, addContact, updateContact, deleteContact, selectConversation, startDraftConversation } = useInbox();
   const navigate = useNavigate();
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<"all" | "active" | "blocked">("all");
@@ -48,10 +48,10 @@ export function ContactsPage() {
     const conv = conversations.find((c) => c.contactId === contact.id);
     if (conv) {
       selectConversation(conv.id);
-      navigate({ to: "/" });
     } else {
-      navigate({ to: "/" });
+      startDraftConversation(contact.id);
     }
+    navigate({ to: "/" });
   };
 
   return (
@@ -151,6 +151,19 @@ export function ContactsPage() {
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex justify-end gap-1">
+                      <button
+                        onClick={() => openChat(c)}
+                        disabled={c.blocked}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-primary-soft px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/15 disabled:opacity-40"
+                        title={
+                          conversations.some((cv) => cv.contactId === c.id)
+                            ? "Abrir conversación"
+                            : "Iniciar nueva conversación"
+                        }
+                      >
+                        <MessageSquare className="h-3.5 w-3.5" />
+                        {conversations.some((cv) => cv.contactId === c.id) ? "Abrir chat" : "Iniciar chat"}
+                      </button>
                       <button
                         onClick={() => toggleBlockContact(c.id)}
                         className={cn(
