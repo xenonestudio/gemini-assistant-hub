@@ -303,6 +303,17 @@ export function ChatPanel() {
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-4 md:px-6 md:py-6">
         <div className="mx-auto flex max-w-3xl flex-col gap-3">
+          {isDraft && thread.length === 0 && (
+            <div className="mx-auto mt-8 max-w-sm rounded-2xl border border-dashed bg-card/60 p-5 text-center">
+              <div className="mx-auto mb-2 grid h-10 w-10 place-items-center rounded-full bg-primary-soft text-primary">
+                <Send className="h-4 w-4" />
+              </div>
+              <p className="text-sm font-medium">Inicia una conversación con {contact.name}</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Escribe el primer mensaje. La conversación aparecerá en la bandeja en cuanto lo envíes.
+              </p>
+            </div>
+          )}
           {thread.map((m) => {
             const me = m.sender === "agent";
             const bot = m.sender === "bot";
