@@ -29,14 +29,30 @@ export function ChatPanel() {
     resumeBot, resolveConversation, deals, createDeal, pipelineStages, selectDeal,
     saveContact, selectConversation, deleteConversation, toggleUnread, toggleBotPause,
     toggleBlockContact, sendAgentReply,
+    draftContactId, cancelDraftConversation,
   } = useInbox();
   const { isAdmin } = useAuth();
   const navigate = useNavigate();
-  const conv = conversations.find((c) => c.id === selectedConversationId) ?? null;
+  const realConv = conversations.find((c) => c.id === selectedConversationId) ?? null;
+  const isDraft = !realConv && !!draftContactId;
+  // Synthesize a conversation-like object so the rest of the panel can work uniformly.
+  const conv = realConv ?? (isDraft
+    ? {
+        id: `draft:${draftContactId!}`,
+        contactId: draftContactId!,
+        unread: 0,
+        lastMessageAt: Date.now(),
+        status: "open" as const,
+        botPausedUntil: null,
+      }
+    : null);
   const contact = conv ? contacts.find((c) => c.id === conv.contactId) ?? null : null;
   const thread = useMemo(
-    () => messages.filter((m) => m.conversationId === selectedConversationId).sort((a, b) => a.createdAt - b.createdAt),
-    [messages, selectedConversationId],
+    () =>
+      isDraft
+        ? []
+        : messages.filter((m) => m.conversationId === selectedConversationId).sort((a, b) => a.createdAt - b.createdAt),
+    [messages, selectedConversationId, isDraft],
   );
 
   const [draft, setDraft] = useState("");
@@ -72,11 +88,13 @@ export function ChatPanel() {
         resolveConversation(conv.id);
         toast.success(conv.status === "open" ? "Conversación resuelta" : "Conversación reabierta");
       },
+      hidden: isDraft,
     },
     {
       label: conv.unread > 0 ? "Marcar como leída" : "Marcar como no leída",
       icon: conv.unread > 0 ? MailOpen : Mail,
       onClick: () => toggleUnread(conv.id),
+      hidden: isDraft,
     },
     {
       label: paused ? "Reactivar bot ahora" : "Pausar bot 30 min",
@@ -91,6 +109,7 @@ export function ChatPanel() {
         }
       },
       divider: true,
+      hidden: isDraft,
     },
     {
       label: "Copiar último mensaje",
@@ -123,7 +142,7 @@ export function ChatPanel() {
         toast.success("Conversación eliminada");
       },
       destructive: true,
-      hidden: !isAdmin,
+      hidden: !isAdmin || isDraft,
     },
   ];
 
@@ -159,7 +178,10 @@ export function ChatPanel() {
       <div className="flex items-center justify-between gap-2 border-b bg-card px-3 py-3 md:px-5">
         <div className="flex min-w-0 items-center gap-2 md:gap-3">
           <button
-            onClick={() => selectConversation(null)}
+            onClick={() => {
+              if (isDraft) cancelDraftConversation();
+              else selectConversation(null);
+            }}
             className="-ml-1 grid h-8 w-8 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-muted md:hidden"
             title="Volver"
           >
@@ -170,6 +192,11 @@ export function ChatPanel() {
             <div className="flex items-center gap-2">
               <h3 className="truncate text-sm font-semibold">{contact.name}</h3>
               <ChannelBadge channel={contact.channel} />
+              {isDraft && (
+                <span className="rounded-md bg-primary-soft px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                  Nueva conversación
+                </span>
+              )}
               {!contact.saved && (
                 <span className="hidden rounded-md bg-warning/15 px-1.5 py-0.5 text-[10px] font-medium text-warning-foreground sm:inline">
                   No guardado
