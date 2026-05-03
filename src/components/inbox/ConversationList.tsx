@@ -24,14 +24,19 @@ export function ConversationList() {
     return conversations
       .filter((c) => (tab === "all" ? true : c.status === tab))
       .map((c) => {
-        const contact = contacts.find((ct) => ct.id === c.contactId)!;
+        const contact = contacts.find((ct) => ct.id === c.contactId);
         const last = [...messages].reverse().find((m) => m.conversationId === c.id);
         return { conv: c, contact, last };
       })
+      // Filtramos conversaciones que no tienen contacto asociado para evitar el error de 'undefined'
+      .filter(({ contact }) => !!contact)
       .filter(({ contact, last }) => {
-        if (!q) return true;
+        if (!q || !contact) return true;
         const n = q.toLowerCase();
-        return contact.name.toLowerCase().includes(n) || (last?.text.toLowerCase().includes(n) ?? false);
+        return (
+          contact.name.toLowerCase().includes(n) || 
+          (last?.text.toLowerCase().includes(n) ?? false)
+        );
       })
       .sort((a, b) => b.conv.lastMessageAt - a.conv.lastMessageAt);
   }, [conversations, contacts, messages, q, tab]);

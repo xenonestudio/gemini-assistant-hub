@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Bot, RotateCcw, Save, Sparkles, Timer, User, Bell, Plug, Users as UsersIcon } from "lucide-react";
 import { useInbox } from "@/lib/inbox-store";
 import type { AISettings, GeminiModel } from "@/lib/inbox-types";
@@ -24,18 +24,33 @@ import { UsersAdminPage } from "./UsersAdminPage";
 import { useAuth } from "@/lib/auth-store";
 import { cn } from "@/lib/utils";
 
-const MODELS: { id: GeminiModel; label: string; hint: string }[] = [
-  { id: "gemini-2.5-flash-lite", label: "Gemini 2.5 Flash Lite", hint: "Más rápido y económico" },
-  { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash", hint: "Equilibrado (recomendado)" },
-  { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro", hint: "Mayor calidad, más lento" },
-  { id: "gemini-3-flash-preview", label: "Gemini 3 Flash (preview)", hint: "Próxima generación, rápido" },
-  { id: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro (preview)", hint: "Razonamiento avanzado" },
-];
+import { apiFetch } from "@/lib/api";
+
+type ModelOption = { id: string; label: string; hint: string };
 
 export function SettingsPage() {
   const { aiSettings, updateAISettings, resetAISettings } = useInbox();
   const { isAdmin } = useAuth();
   const [draft, setDraft] = useState<AISettings>(aiSettings);
+  const [availableModels, setAvailableModels] = useState<ModelOption[]>([]);
+
+  // Cargar modelos disponibles desde Google
+  useEffect(() => {
+    const fetchModels = async () => {
+      try {
+        const models = await apiFetch("/api/gemini/models");
+        setAvailableModels(models);
+      } catch (error) {
+        console.error("Error fetching models:", error);
+      }
+    };
+    fetchModels();
+  }, []);
+
+  // Sincronizar el borrador cuando se cargan las configuraciones reales del backend
+  useEffect(() => {
+    setDraft(aiSettings);
+  }, [aiSettings]);
 
   const dirty = JSON.stringify(draft) !== JSON.stringify(aiSettings);
 
@@ -105,16 +120,20 @@ export function SettingsPage() {
               <div className="grid gap-2">
                 <Label>Modelo</Label>
                 <Select value={draft.model} onValueChange={(v) => set("model", v as GeminiModel)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Cargando modelos..." /></SelectTrigger>
                   <SelectContent>
-                    {MODELS.map((m) => (
-                      <SelectItem key={m.id} value={m.id}>
-                        <div className="flex flex-col">
-                          <span>{m.label}</span>
-                          <span className="text-xs text-muted-foreground">{m.hint}</span>
-                        </div>
-                      </SelectItem>
-                    ))}
+                    {availableModels.length > 0 ? (
+                      availableModels.map((m) => (
+                        <SelectItem key={m.id} value={m.id}>
+                          <div className="flex flex-col">
+                            <span>{m.label}</span>
+                            <span className="text-xs text-muted-foreground">{m.hint}</span>
+                          </div>
+                        </SelectItem>
+                      ))
+                    ) : (
+                      <SelectItem value={draft.model} disabled>{draft.model}</SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
               </div>

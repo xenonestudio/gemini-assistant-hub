@@ -1,4 +1,6 @@
-import { Outlet, Link, createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
+import { Outlet, Link, createRootRoute, HeadContent, Scripts, useNavigate } from "@tanstack/react-router";
+import { useEffect } from "react";
+import { toast } from "sonner";
 
 import appCss from "../styles.css?url";
 import { Toaster } from "@/components/ui/sonner";
@@ -72,6 +74,20 @@ function RootShell({ children }: { children: React.ReactNode }) {
 
 function AuthGate() {
   const { isAuthenticated, loading } = useAuth();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!loading && !isAuthenticated) {
+      // Solo mostramos el toast si intentan acceder a algo que no es la raíz (login implícito)
+      // O si venimos de una sesión que acaba de expirar
+      const isRoot = window.location.pathname === "/";
+      if (!isRoot) {
+        toast.error("Sesión expirada o no válida. Inicie sesión para continuar.");
+        navigate({ to: "/" });
+      }
+    }
+  }, [isAuthenticated, loading, navigate]);
+
   if (loading) {
     return (
       <div className="grid min-h-screen place-items-center bg-background">

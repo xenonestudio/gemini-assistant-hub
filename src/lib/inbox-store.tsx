@@ -49,6 +49,7 @@ interface InboxState {
   saveContact: (contactId: string, patch?: Partial<Pick<Contact, "name" | "email" | "tags" | "channel" | "phone">>) => void;
   addContactTag: (contactId: string, tag: string) => void;
   removeContactTag: (contactId: string, tag: string) => void;
+  selectContactChat: (contactId: string) => void;
   // Sales pipeline
   deals: Deal[];
   selectedDealId: string | null;
@@ -77,6 +78,14 @@ interface InboxState {
   updateAccount: (patch: Partial<AccountSettings>) => void;
   resetAccount: () => void;
   deleteAccount: () => void;
+<<<<<<< Updated upstream
+=======
+  // WhatsApp connection
+  whatsappQr: string | null;
+  whatsappStatus: 'connected' | 'disconnected' | 'loading' | 'error';
+  whatsappSession: any | null;
+  logoutWhatsapp: () => Promise<void>;
+>>>>>>> Stashed changes
 }
 
 const InboxContext = createContext<InboxState | null>(null);
@@ -107,6 +116,228 @@ export function InboxProvider({ children }: { children: ReactNode }) {
   const [aiSettings, setAISettings] = useState<AISettings>(DEFAULT_AI_SETTINGS);
   const [account, setAccount] = useState<AccountSettings>(DEFAULT_ACCOUNT_SETTINGS);
   const [pipelineStages, setPipelineStages] = useState<PipelineStage[]>(DEAL_STAGES);
+<<<<<<< Updated upstream
+=======
+  const [isLoading, setIsLoading] = useState(true);
+  const [whatsappQr, setWhatsappQr] = useState<string | null>(null);
+  const [whatsappStatus, setWhatsappStatus] = useState<'connected' | 'disconnected' | 'loading' | 'error'>('loading');
+  const [whatsappSession, setWhatsappSession] = useState<any | null>(null);
+
+  // Carga inicial de datos
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        // Cargamos contactos, conversaciones y configuración en paralelo
+        const [contactsData, convsData, configData] = await Promise.all([
+          apiFetch("/api/contactos"),
+          apiFetch("/api/conversaciones"),
+          apiFetch("/api/config")
+        ]);
+
+        const mappedConversations: Conversation[] = convsData.map((c: any) => ({
+          id: c.whatsapp_id,
+          contactId: c.whatsapp_id,
+          unread: 0,
+          lastMessageAt: new Date(c.fecha_ultimo_mensaje).getTime(),
+          status: "open",
+          botPausedUntil: null,
+        }));
+
+        // Mapear configuración de la DB al estado de la IA
+        const aiMap: Partial<AISettings> = {};
+        configData.forEach((item: { clave: string; valor: string }) => {
+          if (item.clave === "bot_enabled") aiMap.enabled = item.valor === "true";
+          if (item.clave === "model_name") aiMap.model = item.valor as any;
+          if (item.clave === "system_prompt") aiMap.systemPrompt = item.valor;
+          if (item.clave === "temperature") aiMap.temperature = parseFloat(item.valor);
+          if (item.clave === "max_tokens") aiMap.maxTokens = parseInt(item.valor);
+          if (item.clave === "response_delay") aiMap.responseDelaySec = parseFloat(item.valor);
+          if (item.clave === "pause_after_agent") aiMap.pauseAfterAgentMin = parseInt(item.valor);
+        });
+
+        if (Object.keys(aiMap).length > 0) {
+          setAISettings(prev => ({ ...prev, ...aiMap }));
+        }
+
+        // Si hay conversaciones de gente que no está en nuestra tabla 'contactos' aún,
+        // creamos contactos temporales para que se puedan visualizar.
+        const augmentedContacts = [...contactsData];
+        mappedConversations.forEach(conv => {
+          if (!augmentedContacts.find(ct => ct.id === conv.contactId)) {
+            augmentedContacts.push({
+              id: conv.contactId,
+              name: conv.contactId.split('@')[0],
+              phone: conv.contactId.split('@')[0],
+              channel: "whatsapp",
+              tags: [],
+              blocked: false,
+              avatarColor: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)],
+              saved: false,
+              createdAt: conv.lastMessageAt
+            });
+          }
+        });
+
+        setContacts(augmentedContacts);
+        setConversations(mappedConversations);
+      } catch (error) {
+        console.error("Error cargando datos iniciales:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadData();
+  }, []);
+
+  // Sockets para actualizaciones en tiempo real
+  useEffect(() => {
+    socket.on("nuevo_mensaje", (data) => {
+      // Si el mensaje es de 'admin' (nosotros), ya lo añadimos localmente
+      // para que sea instantáneo. Solo lo añadimos vía socket si es del contacto.
+      if (data.rol === 'admin') return;
+
+      const msg: Message = {
+        id: uid(),
+        conversationId: data.whatsapp_id,
+        sender: "contact", // Si no es admin, es el contacto
+        text: data.mensaje,
+        createdAt: Date.now(),
+        replyToId: data.replyToId
+      };
+
+      setMessages((prev) => [...prev, msg]);
+      
+      // Actualizamos la conversación en la lista
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === data.whatsapp_id 
+            ? { ...c, lastMessageAt: msg.createdAt, unread: selectedConversationId === c.id ? 0 : c.unread + 1 } 
+            : c
+        )
+      );
+    });
+
+    socket.on("whatsapp_status", (status) => setWhatsappStatus(status));
+    socket.on("qr", (qr) => setWhatsappQr(qr));
+    socket.on("whatsapp_session", (session) => setWhatsappSession(session));
+
+    return () => {
+      socket.off("nuevo_mensaje");
+      socket.off("whatsapp_status");
+      socket.off("qr");
+      socket.off("whatsapp_session");
+    };
+  }, [selectedConversationId]);
+
+  // Cargar mensajes cuando se selecciona una conversación
+  useEffect(() => {
+    if (!selectedConversationId) return;
+
+    const loadMessages = async () => {
+      try {
+        const data = await apiFetch(`/api/mensajes/${selectedConversationId}`);
+        const mappedMessages: Message[] = data.map((m: any) => ({
+          id: m.id.toString(),
+          conversationId: m.whatsapp_id,
+          sender: m.rol === "admin" ? "agent" : m.rol === "bot" ? "bot" : "contact",
+          text: m.mensaje,
+          createdAt: new Date(m.timestamp).getTime(),
+        }));
+        setMessages(mappedMessages);
+      } catch (error) {
+        console.error("Error cargando mensajes:", error);
+      }
+    };
+
+    loadMessages();
+  }, [selectedConversationId]);
+
+  // Sockets para mensajes en tiempo real
+  useEffect(() => {
+    const onNuevoMensaje = (datos: any) => {
+      const { whatsapp_id, rol, mensaje, timestamp, nombre } = datos;
+
+      const newMsg: Message = {
+        id: Math.random().toString(36).slice(2, 11),
+        conversationId: whatsapp_id,
+        sender: rol === "admin" ? "agent" : rol === "bot" ? "bot" : "contact",
+        text: mensaje,
+        createdAt: new Date(timestamp).getTime(),
+      };
+
+      setMessages((prev) => {
+        // Evitar duplicados si el mensaje ya llegó por carga inicial
+        if (prev.some((m) => m.text === mensaje && Math.abs(m.createdAt - newMsg.createdAt) < 2000)) {
+          return prev;
+        }
+        return [...prev, newMsg];
+      });
+
+      setConversations((prev) => {
+        const exists = prev.find((c) => c.id === whatsapp_id);
+        if (exists) {
+          return prev.map((c) =>
+            c.id === whatsapp_id
+              ? { ...c, lastMessageAt: newMsg.createdAt, unread: c.id === selectedConversationId ? 0 : c.unread + 1 }
+              : c,
+          ).sort((a, b) => b.lastMessageAt - a.lastMessageAt);
+        } else {
+          // Nueva conversación
+          const newConv: Conversation = {
+            id: whatsapp_id,
+            contactId: whatsapp_id,
+            unread: 1,
+            lastMessageAt: newMsg.createdAt,
+            status: "open",
+            botPausedUntil: null,
+          };
+          return [newConv, ...prev];
+        }
+      });
+
+      // Actualizar contacto si es nuevo
+      setContacts((prev) => {
+        if (prev.find((c) => c.id === whatsapp_id)) return prev;
+        const newContact: Contact = {
+          id: whatsapp_id,
+          name: nombre || whatsapp_id.split("@")[0],
+          phone: whatsapp_id.split("@")[0],
+          channel: "whatsapp",
+          tags: [],
+          blocked: false,
+          avatarColor: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)],
+          saved: !!nombre,
+          createdAt: new Date(timestamp).getTime(),
+        };
+        return [newContact, ...prev];
+      });
+    };
+
+    socket.on("nuevo_mensaje", onNuevoMensaje);
+    
+    socket.on("qr", (qr: string) => {
+      setWhatsappQr(qr);
+      setWhatsappStatus('disconnected');
+    });
+
+    socket.on("whatsapp_status", (status: any) => {
+      setWhatsappStatus(status);
+      if (status === 'connected') {
+        setWhatsappQr(null);
+        loadWhatsappSession();
+      } else {
+        setWhatsappSession(null);
+      }
+    });
+
+    return () => {
+      socket.off("nuevo_mensaje", onNuevoMensaje);
+      socket.off("qr");
+      socket.off("whatsapp_status");
+    };
+  }, [selectedConversationId]);
+>>>>>>> Stashed changes
 
   // Tick every 30s so the "bot paused" countdown re-renders
   const [, setTick] = useState(0);
@@ -123,6 +354,7 @@ export function InboxProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+<<<<<<< Updated upstream
   const startDraftConversation = useCallback((contactId: string) => {
     // If a real conversation exists for this contact, open it instead of a draft.
     const existing = conversations.find((c) => c.contactId === contactId);
@@ -138,6 +370,24 @@ export function InboxProvider({ children }: { children: ReactNode }) {
 
   const cancelDraftConversation = useCallback(() => {
     setDraftContactId(null);
+=======
+  const selectContactChat = useCallback((contactId: string) => {
+    setConversations((prev) => {
+      const exists = prev.find((c) => c.contactId === contactId);
+      if (exists) return prev;
+
+      const newConv: Conversation = {
+        id: contactId,
+        contactId,
+        unread: 0,
+        lastMessageAt: Date.now(),
+        status: "open",
+        botPausedUntil: null,
+      };
+      return [newConv, ...prev];
+    });
+    setSelectedConversationId(contactId);
+>>>>>>> Stashed changes
   }, []);
 
   const markAsRead = useCallback((conversationId: string) => {
@@ -147,6 +397,7 @@ export function InboxProvider({ children }: { children: ReactNode }) {
   const sendAgentMessage = useCallback((conversationId: string, text: string) => {
     const trimmed = text.trim();
     if (!trimmed) return;
+<<<<<<< Updated upstream
     // If this is a draft conversation id, materialize it first.
     let realId = conversationId;
     if (conversationId.startsWith("draft:")) {
@@ -201,22 +452,79 @@ export function InboxProvider({ children }: { children: ReactNode }) {
       setSelectedConversationId(realId);
     }
     const newMsg: Message = {
+=======
+    const newMessage: Message = {
+>>>>>>> Stashed changes
       id: uid(),
       conversationId: realId,
       sender: "agent",
       text: trimmed,
       createdAt: Date.now(),
-      replyToId: replyToId ?? undefined,
     };
-    setMessages((prev) => [...prev, newMsg]);
+    setMessages((prev) => [...prev, newMessage]);
+
+    // Actualizamos el timestamp de la conversación para que suba en la lista
     setConversations((prev) =>
       prev.map((c) =>
+<<<<<<< Updated upstream
         c.id === realId
           ? { ...c, lastMessageAt: newMsg.createdAt, botPausedUntil: Date.now() + BOT_PAUSE_MS, unread: 0 }
           : c,
       ),
+=======
+        c.id === conversationId ? { ...c, lastMessageAt: newMessage.createdAt, unread: 0 } : c
+      )
+>>>>>>> Stashed changes
     );
+
+    try {
+      await apiFetch("/api/enviar-manual", {
+        method: "POST",
+        body: JSON.stringify({ whatsapp_id: conversationId, mensaje: text }),
+      });
+    } catch (error) {
+      console.error("Error enviando mensaje:", error);
+      toast.error("Error al enviar mensaje al servidor");
+    }
   }, []);
+
+  const sendAgentReply = useCallback(
+    async (conversationId: string, text: string, replyToId?: string | null) => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+      const newMessage: Message = {
+        id: uid(),
+        conversationId,
+        sender: "agent",
+        text: trimmed,
+        createdAt: Date.now(),
+        replyToId: replyToId ?? undefined,
+      };
+      setMessages((prev) => [...prev, newMessage]);
+
+      // Actualizamos el timestamp de la conversación
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === conversationId ? { ...c, lastMessageAt: newMessage.createdAt, unread: 0 } : c
+        )
+      );
+
+      try {
+        await apiFetch("/api/enviar-manual", {
+          method: "POST",
+          body: JSON.stringify({ 
+            whatsapp_id: conversationId, 
+            mensaje: text,
+            replyToId 
+          }),
+        });
+      } catch (error) {
+        console.error("Error enviando respuesta:", error);
+        toast.error("Error al enviar respuesta");
+      }
+    },
+    [],
+  );
 
   const toggleBlockContact = useCallback((contactId: string) => {
     setContacts((prev) => prev.map((c) => (c.id === contactId ? { ...c, blocked: !c.blocked } : c)));
@@ -293,7 +601,7 @@ export function InboxProvider({ children }: { children: ReactNode }) {
   }, [contacts, conversations, selectedConversationId]);
 
   const addContact = useCallback<InboxState["addContact"]>((input) => {
-    const id = uid();
+    const id = input.phone.includes('@') ? input.phone : `${input.phone.replace(/\D/g, '')}@c.us`;
     const contact: Contact = {
       id,
       name: input.name,
@@ -307,16 +615,35 @@ export function InboxProvider({ children }: { children: ReactNode }) {
       createdAt: Date.now(),
     };
     setContacts((prev) => [contact, ...prev]);
+    
+    // Guardar en base de datos
+    apiFetch("/api/contactos", {
+      method: "POST",
+      body: JSON.stringify(contact)
+    }).catch(err => console.error("Error al guardar contacto:", err));
+
     return id;
   }, []);
 
   const updateContact = useCallback<InboxState["updateContact"]>((contactId, patch) => {
     setContacts((prev) => prev.map((c) => (c.id === contactId ? { ...c, ...patch } : c)));
+    
+    // Persistir cambios
+    apiFetch(`/api/contactos/${contactId}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch)
+    }).catch(err => console.error("Error al actualizar contacto:", err));
   }, []);
 
   const deleteContact = useCallback<InboxState["deleteContact"]>((contactId) => {
     setContacts((prev) => prev.filter((c) => c.id !== contactId));
     setConversations((prev) => prev.filter((c) => c.contactId !== contactId));
+    
+    // Borrar de base de datos
+    apiFetch(`/api/contactos/${contactId}`, {
+      method: "DELETE"
+    }).catch(err => console.error("Error al eliminar contacto:", err));
+
     setMessages((prev) => {
       const removedConvIds = new Set(
         conversations.filter((c) => c.contactId === contactId).map((c) => c.id),
@@ -428,7 +755,32 @@ export function InboxProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const updateAISettings = useCallback((patch: Partial<AISettings>) => {
-    setAISettings((prev) => ({ ...prev, ...patch }));
+    setAISettings((prev) => {
+      const next = { ...prev, ...patch };
+      
+      // Persistir cambios al backend
+      Object.entries(patch).forEach(([key, value]) => {
+        let clave = "";
+        let valor = String(value);
+
+        if (key === "enabled") clave = "bot_enabled";
+        else if (key === "model") clave = "model_name";
+        else if (key === "systemPrompt") clave = "system_prompt";
+        else if (key === "temperature") clave = "temperature";
+        else if (key === "maxTokens") clave = "max_tokens";
+        else if (key === "responseDelaySec") clave = "response_delay";
+        else if (key === "pauseAfterAgentMin") clave = "pause_after_agent";
+
+        if (clave) {
+          apiFetch("/api/config", {
+            method: "POST",
+            body: JSON.stringify({ clave, valor })
+          }).catch(err => console.error(`Error persistiendo ${clave}:`, err));
+        }
+      });
+
+      return next;
+    });
   }, []);
   const resetAISettings = useCallback(() => setAISettings(DEFAULT_AI_SETTINGS), []);
 
@@ -482,6 +834,33 @@ export function InboxProvider({ children }: { children: ReactNode }) {
 
   const resetPipelineStages = useCallback(() => setPipelineStages(DEAL_STAGES), []);
 
+  const loadWhatsappSession = useCallback(async () => {
+    try {
+      const data = await apiFetch("/api/whatsapp/session-info");
+      if (data.connected) {
+        setWhatsappSession(data);
+        setWhatsappStatus('connected');
+      }
+    } catch (error) {
+      console.error("Error cargando sesión de whatsapp:", error);
+    }
+  }, []);
+
+  const logoutWhatsapp = useCallback(async () => {
+    try {
+      await apiFetch("/api/whatsapp/logout", { method: "POST" });
+      setWhatsappStatus('disconnected');
+      setWhatsappSession(null);
+    } catch (error) {
+      console.error("Error al cerrar sesión:", error);
+      throw error;
+    }
+  }, []);
+
+  useEffect(() => {
+    loadWhatsappSession();
+  }, [loadWhatsappSession]);
+
   const value = useMemo<InboxState>(
     () => ({
       contacts,
@@ -532,6 +911,13 @@ export function InboxProvider({ children }: { children: ReactNode }) {
       removePipelineStage,
       reorderPipelineStage,
       resetPipelineStages,
+<<<<<<< Updated upstream
+=======
+      whatsappQr,
+      whatsappStatus,
+      whatsappSession,
+      logoutWhatsapp,
+>>>>>>> Stashed changes
     }),
     [
       contacts,
@@ -558,6 +944,7 @@ export function InboxProvider({ children }: { children: ReactNode }) {
       saveContact,
       addContactTag,
       removeContactTag,
+      selectContactChat,
       deals,
       selectedDealId,
       selectDeal,
@@ -582,6 +969,13 @@ export function InboxProvider({ children }: { children: ReactNode }) {
       removePipelineStage,
       reorderPipelineStage,
       resetPipelineStages,
+<<<<<<< Updated upstream
+=======
+      whatsappQr,
+      whatsappStatus,
+      whatsappSession,
+      logoutWhatsapp,
+>>>>>>> Stashed changes
     ],
   );
 

@@ -571,8 +571,10 @@ function SaveContactDialog({
   onClose: () => void;
   onSubmit: (patch: { name: string; email?: string; tags: string[] }) => void;
 }) {
-  const looksLikePhone = /^\+?[\d\s()-]+$/.test(defaultName.trim());
-  const [name, setName] = useState(looksLikePhone ? "" : defaultName);
+  // Si el nombre es igual al teléfono o es "Desconocido", lo dejamos vacío para que el usuario lo rellene.
+  // De lo contrario, usamos el nombre detectado (Pushname) como sugerencia.
+  const isGeneric = defaultName === phone || defaultName === "Desconocido" || /^\+?\d+$/.test(defaultName.trim());
+  const [name, setName] = useState(isGeneric ? "" : defaultName);
   const [email, setEmail] = useState("");
   const [tagsStr, setTagsStr] = useState("");
 

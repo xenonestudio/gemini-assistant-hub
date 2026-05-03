@@ -24,7 +24,11 @@ import type { Channel, Contact } from "@/lib/inbox-types";
 const CHANNELS: Channel[] = ["whatsapp", "webhook", "instagram", "messenger"];
 
 export function ContactsPage() {
+<<<<<<< Updated upstream
   const { contacts, conversations, toggleBlockContact, addContact, updateContact, deleteContact, selectConversation, startDraftConversation } = useInbox();
+=======
+  const { contacts, conversations, toggleBlockContact, addContact, updateContact, deleteContact, selectConversation, selectContactChat } = useInbox();
+>>>>>>> Stashed changes
   const navigate = useNavigate();
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<"all" | "active" | "blocked">("all");
@@ -45,11 +49,20 @@ export function ContactsPage() {
   });
 
   const openChat = (contact: Contact) => {
+<<<<<<< Updated upstream
     const conv = conversations.find((c) => c.contactId === contact.id);
     if (conv) {
       selectConversation(conv.id);
     } else {
       startDraftConversation(contact.id);
+=======
+    // Buscamos si ya existe una conversación para este contacto
+    const existing = conversations.find(c => c.contactId === contact.id);
+    if (existing) {
+      selectConversation(existing.id);
+    } else {
+      selectContactChat(contact.id);
+>>>>>>> Stashed changes
     }
     navigate({ to: "/" });
   };

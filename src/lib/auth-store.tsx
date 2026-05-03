@@ -29,12 +29,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     try {
       const raw = typeof window !== "undefined" ? window.localStorage.getItem(STORAGE_KEY) : null;
-      if (raw) setUser(JSON.parse(raw));
+      if (raw) {
+        setUser(JSON.parse(raw));
+        const token = window.localStorage.getItem("pulse.auth.token");
+        if (token) setSocketToken(token);
+      }
     } catch {
       // ignore
     }
     setLoading(false);
   }, []);
+
+  const logout = useCallback(() => {
+    localStorage.removeItem("pulse.auth.token");
+    socket.disconnect();
+    persist(null);
+  }, []);
+
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      logout();
+    };
+    window.addEventListener("pulse:unauthorized", handleUnauthorized);
+    return () => window.removeEventListener("pulse:unauthorized", handleUnauthorized);
+  }, [logout]);
 
   const persist = (u: AuthUser | null) => {
     setUser(u);
@@ -78,7 +96,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { ok: true };
   }, []);
 
+<<<<<<< Updated upstream
   const logout = useCallback(() => persist(null), []);
+=======
+>>>>>>> Stashed changes
 
   const setRole = useCallback((role: "admin" | "agent") => {
     setUser((prev) => {

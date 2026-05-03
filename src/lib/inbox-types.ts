@@ -47,12 +47,7 @@ export interface Conversation {
 
 export const BOT_PAUSE_MS = 30 * 60 * 1000; // 30 minutes
 
-export type GeminiModel =
-  | "gemini-2.5-flash-lite"
-  | "gemini-2.5-flash"
-  | "gemini-2.5-pro"
-  | "gemini-3-flash-preview"
-  | "gemini-3.1-pro-preview";
+export type GeminiModel = string;
 
 export interface AISettings {
   enabled: boolean;
